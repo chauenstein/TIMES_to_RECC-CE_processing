@@ -396,8 +396,6 @@ outflow_2016_2060_srptc_all = TIMES_outflow_srpt_annual_ex_nuc_c + outflow_2016_
 # load scenario scenario_mapping.xlsx file with mapping of TIMES scenario names to RECC scenario names
 scenario_mapping_df = pd.read_excel('scenario_mapping.xlsx')
 
-# TODO: map TIMES technologies to RECC technologies where MC data available
-
 times_to_recc_technology_mapping ={
     "EAUTOGENBIO00 [EAUT.Electricity Autoproduction.BIO.00]":"Biomass|Other (Not Elsewhere Specified)",
     "EAUTOGENGAS00 [EAUT.Electricity Autoproduction.GAS.00]":"Gas|Combined Cycle|Other (Not Elsewhere Specified)",
@@ -695,14 +693,14 @@ RECC_technologies = [
     "Wind|Offshore|Other (Not Elsewhere Specified)",
     "Geothermal|Other (Not Elsewhere Specified)",
     "Nuclear|Other (Not Elsewhere Specified)",
-    "Oil|Light oil combined cycle",
+    #"Oil|Light oil combined cycle",
     "Oil|Other (Not Elsewhere Specified)",
     "Gas|Combined Cycle|w/ CCS",
     "Gas|Combined Cycle|Other (Not Elsewhere Specified)",
-    "Coal|Integrated gasification combined cycle",
-    "Coal|Advanced plant w/ CCS",
+    #"Coal|Integrated gasification combined cycle",
+    #"Coal|Advanced plant w/ CCS",
     "Coal|w/ CCS",
-    "Coal|w/o CCS",
+    #"Coal|w/o CCS",
     "Coal|Other (Not Elsewhere Specified)"
 ]
 
@@ -926,11 +924,11 @@ try:
                 rows.append([sname, rname, tname] + vals)
     cols = ['Scenario', 'Region', 'RECC_Technology'] + age_cols
     df_recc2015 = pd.DataFrame(rows, columns=cols)
-    out_file = 'RECC_2015_stock.csv'
-    df_recc2015.to_csv(out_file, index=False)
+    out_file = 'RECC_2015_stock.xlsx'
+    df_recc2015.to_excel(out_file, sheet_name='values', index=False)
     print(f"Exported RECC_2015_stock to {out_file} with shape {df_recc2015.shape}")
 except Exception as e:
-    print(f"Warning: could not export RECC_2015_stock to CSV: {e}")
+    print(f"Warning: could not export RECC_2015_stock to xlsx: {e}")
 
 
 # --- Reshape RECC_inflows and RECC_outflows to include SSP x RCP x CE scenario axes ---
@@ -1004,7 +1002,6 @@ else:
         RECC_CE_list = CE_list
         print(f"RECC_inflows reshaped to {RECC_inflows.shape}; RECC_outflows reshaped to {RECC_outflows.shape}")
 
-# TODO: remove from RECC_outflows all "rows" from axis Nt where all values for age-cohort are zero (by SSP,RCP,CE,Region,Tech) to reduce size before export
 
 
 # Create per-CE arrays: RECC_inflows_<CE> and RECC_outflows_<CE>
@@ -1040,6 +1037,63 @@ if isinstance(RECC_CE_list, (list, tuple)) and len(RECC_CE_list) > 0:
 else:
     print("No CE entries found; skipping creation of per-CE arrays.")
 
+#rewrite outflows as dataframe with full str information across all axes (SSP, RCP, Region, Technology, Year) and age-cohorts as columns to,later exlude unecessary years with just zeros in all age-cohorts (e.g. 2015-2020) and keep only years with non-zero outflows across any age-cohort (to reduce read-in time), then export to CSV for each CE scenario
+RECC_outflows_df_by_CE = {}
+
+# Process each CE scenario
+for CE_idx, CE_name in enumerate(RECC_CE_list):
+    # Get the array for this CE scenario
+    arr = RECC_outflows_by_CE[CE_name]  # Shape: (1, 2, 27, 18, 46, 161)
+    
+    # Create a list to store all rows
+    rows_list = []
+    years_outflow_removal = list(range(2015, 2015 + Nt))
+    # Iterate through all dimensions
+    for s in range(arr.shape[0]):  # SSP
+        for r in range(arr.shape[1]):  # RCP
+            for reg in range(arr.shape[2]):  # Regions
+                for tech in range(arr.shape[3]):  # Technologies
+                    for year in range(arr.shape[4]):  # Years
+                        # Get the age_cohort values (161 values)
+                        age_cohort_values = arr[s, r, reg, tech, year, :]
+                        
+                        # Only keep if NOT all zeros
+                        if not np.all(age_cohort_values == 0):
+                            # Create a row with index information
+                            row = {
+                                'SSP_Scenarios': RECC_SSP_list[s],
+                                'Scenario_RCP': RECC_RCP_list[r],
+                                'SSP_Regions_32': RECC_regions[reg],
+                                'Sectors_industry': RECC_technologies[tech],
+                                'Year': years_outflow_removal[year]
+                            }
+                            
+                            # Add each age_cohort value as a separate column
+                            for cohort_idx, cohort_value in enumerate(age_cohort_values):
+                                row[cohort_idx+1900] = cohort_value
+                            
+                            rows_list.append(row)
+    
+    # Convert to DataFrame
+    df = pd.DataFrame(rows_list)
+    
+    # Store in dictionary
+    RECC_outflows_df_by_CE[CE_name] = df
+    
+    print(f"CE Scenario: {CE_name}")
+    print(f"  DataFrame shape: {df.shape}")
+    print(f"  Columns: {list(df.columns[:10])}...")  # Show first 10 columns
+    balance = abs(RECC_outflows_by_CE[CE_name][:,:,:,:,:,:].sum() - RECC_outflows_df_by_CE[CE_name].iloc[:,5:].sum().sum())
+    if balance > 1e-10:  # Allow small numerical tolerance
+        raise ValueError(f"Balance check failed for CE='{CE_name}': sum of array values ({RECC_outflows_by_CE[CE_name][:,:,:,:,:,:].sum()}) does not match sum of DataFrame values ({RECC_outflows_df_by_CE[CE_name].iloc[:,5:].sum().sum()})!")
+    else:
+        print(f" Balance check passed ✅: RECC_outflows_by_CE[{CE_name}] - RECC_outflows_df_by_CE[{CE_name}] = {round(balance,2)}, is in acceptable range")
+    print()
+
+# Now we have 7 DataFrames, one for each CE scenario
+# Access them like: RECC_outflows_df_by_CE['CE_scenario_name']
+
+
 # Export RECC_inflows_by_CE and RECC_outflows_by_CE to CSV files
 try:
     infl_dict = RECC_inflows_by_CE
@@ -1073,11 +1127,12 @@ for ce_key, arr in infl_dict.items():
                     series = arr[i_s, i_r, i_reg, i_t, :].tolist()
                     rows.append([s_val, r_val, reg_val, tech_val] + series)
     df_out = pd.DataFrame(rows, columns=cols)
-    fname = f"RECC_inflows_{_safe_name(ce_key)}.csv"
-    df_out.to_csv(fname, index=False)
+    fname = f"RECC_inflows_{_safe_name(ce_key)}.xlsx"
+    df_out.to_excel(fname, sheet_name="values", index=False)
     print(f"Exported inflows for CE='{ce_key}' to {fname} (rows={len(rows)}, cols={len(cols)})")
 
-# For outflows: axis shape expected (nSSP,nRCP,nReg,nTech,Nt,Nc)
+#previous version from ch wihtout removal of zero-outflow years
+'''# For outflows: axis shape expected (nSSP,nRCP,nReg,nTech,Nt,Nc)
 for ce_key, arr in out_dict.items():
     try:
         nSSP, nRCP, nReg, nTech, Nt_len, Nc_len = arr.shape
@@ -1102,6 +1157,17 @@ for ce_key, arr in out_dict.items():
     df_out = pd.DataFrame(rows, columns=cols)
     fname = f"RECC_outflows_{_safe_name(ce_key)}.csv"
     df_out.to_csv(fname, index=False)
-    print(f"Exported outflows for CE='{ce_key}' to {fname} (rows={len(rows)}, cols={len(cols)})")
+    print(f"Exported outflows for CE='{ce_key}' to {fname} (rows={len(rows)}, cols={len(cols)})")'''
 
-
+# Export for RECC_outflows_df_by_CE: axis shape expected (nSSP,nRCP,nReg,nTech,Nt,Nc)
+for CE_name, df in RECC_outflows_df_by_CE.items():
+    # Sanitize the CE name for use in filename
+    safe_filename = re.sub(r"\W+", "_", str(CE_name)).strip("_")
+    
+    # Create filename
+    filename = f"RECC_outflows_{safe_filename}.xlsx"
+    
+    # Export to Excel
+    df.to_excel(filename, sheet_name ="values", index=True)
+    
+    print(f"Exported outflows {CE_name} as {filename} (shape: {df.shape})")
