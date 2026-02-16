@@ -285,9 +285,16 @@ for i_t in range(1,Nt): # start from 1 as no outflow in 2015
 
 #Add 2015 TIMES-stock_2015_srpc_ex_nuc difference to 2015 stock (only existing and nuclear), with age-cohort 1900 (capacities without outflow before 2060)
 delta_2015_ex_nuc2 = TIMES_stock_srpt_ex_nuc[:,:,:,0] - stock_2015_srpc_ex_nuc[:,:,:,:].sum(axis=3)
+#delta_2015_ex_nuc2_neg_values = delta_2015_ex_nuc2.copy() # only for checking
+#delta_2015_ex_nuc2_neg_values[delta_2015_ex_nuc2_neg_values > 0] = 0
+# negative delta 2015 values: in all scenarios roughly the same total; relevance differs across regions
+# negative delta 2015 values due to early retirements (thus, part of 2015 stock based on outflows, but not of TIMES 2015 stock), and nuclear lifetime extension.
 # set any negative values in delta_2015_ex_nuc2 to 0 (mostly an issue of nuclear lifetime extension; not relevant as not taken over into RECC technologies later)
 delta_2015_ex_nuc2[delta_2015_ex_nuc2 < 0] = 0
 stock_2015_srpc_ex_nuc[:,:,:,0] += delta_2015_ex_nuc2[:,:,:] # add any remaining difference to age-cohort 1900 (index 0)
+# Check: Delta_2015_final = stock_2015_srpc_ex_nuc.sum() - TIMES_stock_srpt_ex_nuc[:,:,:,0].sum()
+# Delta_2015_final >> 0 because stock_2015_srpc_ex_nuc contains early retired capacities that actually were installed after 2015, but age-cohorts assigned to outflows indicate 2015 existance.
+# For now (Feb 16, 2026), we accept this overestimation of the 2015 stock.
 
 # 3.2) Recreate 2020 stock based on above stock_2015_srpc_ex_nuc to derive 2016-2020 inflows\
 # - outflows of existing and nuclear capacities during 2016-2020 (2016-2020 outflows, pre 2016 age-cohorts) \
@@ -308,10 +315,13 @@ inflow_2016_2020_srpt_ex_nuc = np.zeros((len(scenarios), len(regions), len(proce
 inflow_2016_2020_srpt_ex_nuc[:,:,:,1:6] = TIMES_outflow_srpt_annual_ex_nuc_c[:,:,:,:,SwitchTime:SwitchTime+5].sum(axis=3) # age cohorts 2016-2020 (sum over all t) based on outflows
 inflow_2016_2020_srpt_ex_nuc[:,:,:,1:6] += TIMES_inflow_srpt_annual_ex_nuc[:,:,:,1:6] # add VAR_NCap for nuclear during 2016-2020 (this is only nuclear extension + ENFR_FLAMANVILLE-3)
 inflow_2016_2020_srpt_ex_nuc[:,:,:,1:6] +=  delta_2020_ex_nuc[:,:,:][:,:,:,np.newaxis]/5 # add delta_2020_ex_nuc to age-cohorts 2016-2020 
+# Check Delta_2016_2020_inflows = inflow_2016_2020_srpt_ex_nuc[:,:,:,1:6].sum() - TIMES_inflow_srpt_annual_ex_nuc[:,:,:,1:6].sum()
+# Delta_2016_2020_inflows >> 0 because TIMES does not track inflows for existing capacities 2016-2020
 
 inflow_2021_2060_srpt_ex_nuc = np.zeros((len(scenarios), len(regions), len(processes), Nt), dtype=float) # inflows 2021-2060 based on outflows of existing capacities and VAR_NCap for nuclear
-inflow_2021_2060_srpt_ex_nuc[:,:,:,6:] = TIMES_outflow_srpt_annual_ex_nuc_c[:,:,:,:,SwitchTime+5:].sum(axis=3) # age cohorts 2021-2060 (sum over all t) based on outflows
+inflow_2021_2060_srpt_ex_nuc[:,:,:,6:] = TIMES_outflow_srpt_annual_ex_nuc_c[:,:,:,:,SwitchTime+5:].sum(axis=3) # age cohorts 2021-2060 (sum over all t) based on outflows, should be zero
 inflow_2021_2060_srpt_ex_nuc[:,:,:,6:] += TIMES_inflow_srpt_annual_ex_nuc[:,:,:,6:] # add VAR_NCap for nuclear during 2021-2060 (this is only nuclear extension + ENFR_FLAMANVILLE-3, but this has lifetime beyond 2060 so only inflow in 2021-2060)
+
 
 # Check: for existing and nuclear technologies, 2015 stock + 2016-2020 inflows - 2016-2020 outflows should equal 2020 stock (with some tolerance for numerical issues)
 stock_2015_plus_inflow_minus_outflow_2020_ex_nuc = stock_2015_srpc_ex_nuc.sum() + inflow_2016_2020_srpt_ex_nuc[:,:,:,1:6].sum() - TIMES_outflow_srpt_annual_ex_nuc_c[:,:,:,1:6,:].sum()
@@ -348,6 +358,8 @@ inflow_diff_all_other = inflow_2016_2060_srpt_all_other[:,:,:,1:] - TIMES_inflow
 # Check outflow_2016_2060_srpt_all_other_c vs  TIMES_outflow_srpt_annual_all_other:
 outflow_diff_all_other = np.zeros((len(scenarios), len(regions), len(processes), Nt))
 outflow_diff_all_other[:,:,:,:] = outflow_2016_2060_srpt_all_other_c[:,:,:,:,:].sum(axis=4) - TIMES_outflow_srpt_annual_all_other[:,:,:,:]
+#Early retirements not captured, thus generally lower outflow of non-existing and non-nuclear technologies computed than in TIMES.
+# For scenarios '02_19taxncs' and '02_19taxslow', computed outflows slightly bigger than TIMES. Reason: for technologies with lifetime extension lifetime slightly underestimated.
 
 # Check: inflow_2016_2060_srpt_all_other.sum() - outflow_2016_2060_srpt_all_other_c.sum() = 2060-2015 stock for non-existing and non-nuclear technologies (with some tolerance for numerical issues)
 stock_2015_plus_inflow_minus_outflow_2060_all_other = np.zeros((len(scenarios),len(regions),len(processes)))
@@ -1037,6 +1049,7 @@ if isinstance(RECC_CE_list, (list, tuple)) and len(RECC_CE_list) > 0:
 else:
     print("No CE entries found; skipping creation of per-CE arrays.")
 
+<<<<<<< HEAD
 #rewrite outflows as dataframe with full str information across all axes (SSP, RCP, Region, Technology, Year) and age-cohorts as columns to,later exlude unecessary years with just zeros in all age-cohorts (e.g. 2015-2020) and keep only years with non-zero outflows across any age-cohort (to reduce read-in time), then export to CSV for each CE scenario
 RECC_outflows_df_by_CE = {}
 
@@ -1092,6 +1105,12 @@ for CE_idx, CE_name in enumerate(RECC_CE_list):
 
 # Now we have 7 DataFrames, one for each CE scenario
 # Access them like: RECC_outflows_df_by_CE['CE_scenario_name']
+=======
+
+# TODO: remove from RECC_outflows_<CE> all "rows" from axis Nt where all values for age-cohort are zero (by SSP,RCP,CE,Region,Tech) to reduce size before export
+
+
+>>>>>>> 7ec8538fa2f6edb3d0b2466c28b00a8bc6f0b681
 
 
 # Export RECC_inflows_by_CE and RECC_outflows_by_CE to CSV files
