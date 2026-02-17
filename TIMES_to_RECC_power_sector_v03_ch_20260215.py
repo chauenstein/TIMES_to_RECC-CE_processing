@@ -29,9 +29,9 @@ import numpy as np
 #import os
 
 ##### 1) Import TIMES power sector stock and inflow data, years 2015-2060 (only 5yr time steps available)
-df_TIMES_stock = pd.read_excel("Power_Sector-20260211.xlsx", sheet_name="Installed Capacity", skiprows=2, usecols="A:C,F:O") #exclude years 2010 and 2011
-df_TIMES_inflow = pd.read_excel("Power_Sector-20260211.xlsx", sheet_name="Installed Capacity", skiprows=2, usecols="A:C,Q:Z") #exclude 2011
-df_TIMES_lt = pd.read_excel("Power_Sector-20260211.xlsx", sheet_name="Lifetime_adjusted_PV_WIND_CSP", skiprows=1)
+df_TIMES_stock = pd.read_excel("Power_Sector_17_02_2026.xlsx", skiprows=2, usecols="A:C,F:O") #exclude years 2010 and 2011
+df_TIMES_inflow = pd.read_excel("Power_Sector_17_02_2026.xlsx", skiprows=2, usecols="A:C,R:AA") #exclude 2011
+df_TIMES_lt = pd.read_excel("Lifetimes_TIMES_RECC_adjusted_V1.0_17_02_2026.xlsx", skiprows=1)
 
 # Replace NaN entries with 0 in year columns 2015-2060 (if present)
 df_TIMES_stock.iloc[:, 3:] = df_TIMES_stock.iloc[:, 3:].fillna(0)
@@ -332,7 +332,7 @@ stock_2015_plus_inflow_minus_outflow_2060_ex_nuc = np.zeros((len(scenarios),len(
 stock_2015_plus_inflow_minus_outflow_2060_ex_nuc[:,:,:] = stock_2015_srpc_ex_nuc[:,:,:,:].sum(axis=3) + inflow_2016_2020_srpt_ex_nuc[:,:,:,:].sum(axis=3) + inflow_2021_2060_srpt_ex_nuc[:,:,:,:].sum(axis=3) - TIMES_outflow_srpt_annual_ex_nuc_c[:,:,:,1:,:].sum(axis=3).sum(axis=3)
 stock_2060_diff_ex_nuc = np.zeros((len(scenarios),len(regions),len(processes)))
 stock_2060_diff_ex_nuc[:,:,:] = TIMES_stock_srpt_ex_nuc[:,:,:,9] - stock_2015_plus_inflow_minus_outflow_2060_ex_nuc
-print(f"Check: 2015 stock + 2016-2060 inflows - 2016-2060 outflows = 2060 stock: {stock_2015_plus_inflow_minus_outflow_2060_ex_nuc.sum()} vs {TIMES_stock_srpt_ex_nuc[:,:,:,9].sum()} (difference: {stock_2060_diff_ex_nuc.sum()})")
+print(f"Check (only existing nad nuclear): 2015 stock + 2016-2060 inflows - 2016-2060 outflows = 2060 stock: {stock_2015_plus_inflow_minus_outflow_2060_ex_nuc.sum()} vs {TIMES_stock_srpt_ex_nuc[:,:,:,9].sum()} (difference: {stock_2060_diff_ex_nuc.sum()})")
 ## --> process 'EUNUC3rd10 [Nuclear third LWR]' in regions 'FR', 'ES' and 'SE'  is main cause for deviation 
 ## Issue with 'EUNUC3rd10 [Nuclear third LWR]': VAR_Ncap proceeds corresponing VAR_Cap by one period in TIMES results.
 ## This means, there is an inflow, but stock change is zero, leading to a positive outflow of (inflow - stock change), while negative outflows in following years are set to zero.
@@ -370,7 +370,6 @@ stock_2060_diff_all_other[:,:,:] = TIMES_stock_srpt_all_other[:,:,:,9] - stock_2
 ## Early retirements not captured, thus generally larger 2060 stock computed than TIMES 2060 stock for non-existing and non-nuclear technologies.
 # For scenarios '02_19taxncs' and '02_19taxslow', computed 2060 stock slightly smaller than TIMES stock. Reason: for technologies with lifetime extension lifetime slightly underestimated.
 
-
 ###### 4.) Export 2015 stock with age-cohorts, annual inflows, and annual outflows with age-cohorts ######
 '''# First export for comparison with TIMES technology and region resolution.
 # Export `stock_2015_srpc_ex_nuc` to CSV with `Scenario = '01_ssp2v3'`, `Region`, `Process` in columns A:C
@@ -404,6 +403,11 @@ df_stock2015.to_csv(out_fname, index=False)
 inflow_2016_2060_srpt_all = inflow_2016_2020_srpt_ex_nuc + inflow_2021_2060_srpt_ex_nuc + inflow_2016_2060_srpt_all_other
 # computed TIMES outflows 2016-2060, all technologies:
 outflow_2016_2060_srptc_all = TIMES_outflow_srpt_annual_ex_nuc_c + outflow_2016_2060_srpt_all_other_c
+
+#balance check
+stock2060_check_RECC_vs_TIMES = stock_2015_srpc_ex_nuc[:,:,:,:].sum(axis=3) + inflow_2016_2060_srpt_all[:,:,:,:].sum(axis=3) - outflow_2016_2060_srptc_all[:,:,:,:,:].sum(axis=(3,4)) - TIMES_stock_srpt_ex_nuc[:,:,:,9] - TIMES_stock_srpt_all_other[:,:,:,9]
+print(f"Balance check for 2060 stock: 2015 stock + 2016-2060 inflows - 2016-2060 outflows - TIMES 2060 stock = {stock2060_check_RECC_vs_TIMES.sum()} (should be close to 0)")
+print(f"Balance check per scenario: {stock2060_check_RECC_vs_TIMES[:,:,:].sum(axis=(1,2))}")
 
 # load scenario scenario_mapping.xlsx file with mapping of TIMES scenario names to RECC scenario names
 scenario_mapping_df = pd.read_excel('scenario_mapping.xlsx')
@@ -657,6 +661,7 @@ times_to_recc_technology_mapping ={
     "EUOCETID02 [Tidal energy range]":"Hydro|Other (Not Elsewhere Specified)",
     "EUPCCOHCCSoxy20 [Super-critical Pulverised Coal + CCS Seq Oxyfuel]":"Coal|w/ CCS",
     "EUSTCOLsup01 [Supercritical Pulverised Coal lignite]":"Coal|Other (Not Elsewhere Specified)",
+    "P_ESTHYDPS101 [Pumped Hydro ELC Storage: DayNite (accompanying tech to represent power)]": "Hydro|Other (Not Elsewhere Specified)"
     }
 
 times_to_recc_region_mapping = {
@@ -1049,7 +1054,6 @@ if isinstance(RECC_CE_list, (list, tuple)) and len(RECC_CE_list) > 0:
 else:
     print("No CE entries found; skipping creation of per-CE arrays.")
 
-<<<<<<< HEAD
 #rewrite outflows as dataframe with full str information across all axes (SSP, RCP, Region, Technology, Year) and age-cohorts as columns to,later exlude unecessary years with just zeros in all age-cohorts (e.g. 2015-2020) and keep only years with non-zero outflows across any age-cohort (to reduce read-in time), then export to CSV for each CE scenario
 RECC_outflows_df_by_CE = {}
 
@@ -1105,12 +1109,6 @@ for CE_idx, CE_name in enumerate(RECC_CE_list):
 
 # Now we have 7 DataFrames, one for each CE scenario
 # Access them like: RECC_outflows_df_by_CE['CE_scenario_name']
-=======
-
-# TODO: remove from RECC_outflows_<CE> all "rows" from axis Nt where all values for age-cohort are zero (by SSP,RCP,CE,Region,Tech) to reduce size before export
-
-
->>>>>>> 7ec8538fa2f6edb3d0b2466c28b00a8bc6f0b681
 
 
 # Export RECC_inflows_by_CE and RECC_outflows_by_CE to CSV files
@@ -1187,6 +1185,6 @@ for CE_name, df in RECC_outflows_df_by_CE.items():
     filename = f"RECC_outflows_{safe_filename}.xlsx"
     
     # Export to Excel
-    df.to_excel(filename, sheet_name ="values", index=True)
+    df.to_excel(filename, sheet_name ="values", index=False)
     
     print(f"Exported outflows {CE_name} as {filename} (shape: {df.shape})")
