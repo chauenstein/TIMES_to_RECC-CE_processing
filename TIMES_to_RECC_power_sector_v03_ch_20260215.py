@@ -308,6 +308,8 @@ stock_2020_srpc_ex_nuc[:,:,:,SwitchTime:SwitchTime+5] += TIMES_outflow_srpt_annu
 stock_2020_srpc_ex_nuc[:,:,:,SwitchTime:SwitchTime+5] += TIMES_inflow_srpt_annual_ex_nuc[:,:,:,1:6] # add inflows based on VAR_NCap for nuclear during 2016-2020 (this is only nuclear extension + ENFR_FLAMANVILLE-3)
 delta_2020_ex_nuc = np.zeros((len(scenarios), len(regions), len(processes)))
 delta_2020_ex_nuc[:,:,:] = TIMES_stock_srpt_ex_nuc[:,:,:,1] - stock_2020_srpc_ex_nuc[:,:,:,:].sum(axis=3) # difference of this new 2020 stock and TIMES 2020 stock
+# delta_2020_ex_nuc contains negative values --> only add positive values to age-cohorts 2016-2020 (negative deltas because of overestimation of 2015 stock, see above)
+delta_2020_ex_nuc[delta_2020_ex_nuc < 0] = 0
 stock_2020_srpc_ex_nuc[:,:,:,SwitchTime:SwitchTime+5] += delta_2020_ex_nuc[:,:,:][:,:,:,np.newaxis]/5 # assigne delta_2020 to age-cohorts 2016-2020 (all other in 2060 remaining capacities already added to 2015 stock)
 
 # 2016-2020 inflows based on outflows with age-cohort 2016-2020 + VAR_NCap for nuclear during 2016-2020 + delta 2020 (2016-2020 inflows of "existing"|nuclear not covered elsewhere)
@@ -327,7 +329,7 @@ inflow_2021_2060_srpt_ex_nuc[:,:,:,6:] += TIMES_inflow_srpt_annual_ex_nuc[:,:,:,
 stock_2015_plus_inflow_minus_outflow_2020_ex_nuc = stock_2015_srpc_ex_nuc.sum() + inflow_2016_2020_srpt_ex_nuc[:,:,:,1:6].sum() - TIMES_outflow_srpt_annual_ex_nuc_c[:,:,:,1:6,:].sum()
 stock_2020_diff_ex_nuc = stock_2020_srpc_ex_nuc.sum() - stock_2015_plus_inflow_minus_outflow_2020_ex_nuc
 print(f"Check: 2015 stock + 2016-2020 inflows - 2016-2020 outflows = 2020 stock: {stock_2015_plus_inflow_minus_outflow_2020_ex_nuc} vs {stock_2020_srpc_ex_nuc.sum()} (difference: {stock_2020_diff_ex_nuc})")      
-# Check: 2015 stock + 2016-2060 inflows - 2016-2060 outflows should equal 2060 stock (with some tolerance for numerical issues)
+# Check: 2015 stock + 2016-2060 inflows - 2016-2060 outflows should equal 2060 stock
 stock_2015_plus_inflow_minus_outflow_2060_ex_nuc = np.zeros((len(scenarios),len(regions),len(processes)))
 stock_2015_plus_inflow_minus_outflow_2060_ex_nuc[:,:,:] = stock_2015_srpc_ex_nuc[:,:,:,:].sum(axis=3) + inflow_2016_2020_srpt_ex_nuc[:,:,:,:].sum(axis=3) + inflow_2021_2060_srpt_ex_nuc[:,:,:,:].sum(axis=3) - TIMES_outflow_srpt_annual_ex_nuc_c[:,:,:,1:,:].sum(axis=3).sum(axis=3)
 stock_2060_diff_ex_nuc = np.zeros((len(scenarios),len(regions),len(processes)))
@@ -406,7 +408,7 @@ outflow_2016_2060_srptc_all = TIMES_outflow_srpt_annual_ex_nuc_c + outflow_2016_
 
 #balance check
 stock2060_check_RECC_vs_TIMES = stock_2015_srpc_ex_nuc[:,:,:,:].sum(axis=3) + inflow_2016_2060_srpt_all[:,:,:,:].sum(axis=3) - outflow_2016_2060_srptc_all[:,:,:,:,:].sum(axis=(3,4)) - TIMES_stock_srpt_ex_nuc[:,:,:,9] - TIMES_stock_srpt_all_other[:,:,:,9]
-print(f"Balance check for 2060 stock: 2015 stock + 2016-2060 inflows - 2016-2060 outflows - TIMES 2060 stock = {stock2060_check_RECC_vs_TIMES.sum()} (should be close to 0)")
+print(f"Balance check for 2060 stock: 2015 stock + 2016-2060 inflows - 2016-2060 outflows - TIMES 2060 stock = {stock2060_check_RECC_vs_TIMES.sum()}")
 print(f"Balance check per scenario: {stock2060_check_RECC_vs_TIMES[:,:,:].sum(axis=(1,2))}")
 
 # load scenario scenario_mapping.xlsx file with mapping of TIMES scenario names to RECC scenario names
